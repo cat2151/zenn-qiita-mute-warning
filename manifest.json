@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Zenn Mute Warning",
+  "version": "1.0.0",
+  "description": "ミュートしたユーザーの記事を開いたとき警告を表示する",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://zenn.dev/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://zenn.dev/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
