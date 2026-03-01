@@ -60,7 +60,7 @@ fragment MutingUsers on Viewer {
   const data = await res.json();
   const users = data?.data?.viewer?.mutingUsers || [];
   const usernames = users.map(u => u.urlName).filter(Boolean);
-  log(`Qiita ミュートリスト: ${usernames.length}件`, usernames);
+  log(`Qiita ミュートリスト: ${usernames.length}件`);
   return usernames;
 }
 
@@ -87,7 +87,7 @@ async function refreshIfNeeded(site, csrfToken) {
       ? await fetchQiitaMutedUsernames(csrfToken)
       : await fetchZennMutedUsernames();
     await chrome.storage.local.set({ [cacheKey]: usernames, [timestampKey]: now });
-    log(`${site} ミュートリスト更新完了: ${usernames.length}件`, usernames);
+    log(`${site} ミュートリスト更新完了: ${usernames.length}件`);
   } catch (e) {
     err(`${site} ミュートリスト取得失敗:`, e);
   }

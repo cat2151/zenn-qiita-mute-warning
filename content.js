@@ -124,7 +124,7 @@ async function fetchQiitaMutedUsernamesFromContent() {
   const data = await res.json();
   const users = data?.data?.viewer?.mutingUsers || [];
   const usernames = users.map(u => u.urlName).filter(Boolean);
-  log(`Qiita ミュートリスト: ${usernames.length}件`, usernames);
+  log(`Qiita ミュートリスト: ${usernames.length}件`);
   return usernames;
 }
 
