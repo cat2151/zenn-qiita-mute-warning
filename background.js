@@ -1,6 +1,27 @@
-const log  = (...args) => console.log('[ZMW:bg]', ...args);
-const warn = (...args) => console.warn('[ZMW:bg]', ...args);
-const err  = (...args) => console.error('[ZMW:bg]', ...args);
+const DEBUG_FLAG_KEY = 'zmw_debug_mode_enabled';
+const LOG_PREFIX = '[ZMW:bg]';
+let debugEnabled = false;
+
+const debugReady = chrome.storage.local.get([DEBUG_FLAG_KEY]).then(result => {
+  debugEnabled = Boolean(result[DEBUG_FLAG_KEY]);
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && DEBUG_FLAG_KEY in changes) {
+    debugEnabled = Boolean(changes[DEBUG_FLAG_KEY].newValue);
+  }
+});
+
+const debugLog = (level, ...args) => {
+  debugReady.then(() => {
+    if (!debugEnabled) return;
+    (console[level] || console.log)(LOG_PREFIX, ...args);
+  });
+};
+
+const log  = (...args) => debugLog('log', ...args);
+const warn = (...args) => debugLog('warn', ...args);
+const err  = (...args) => debugLog('error', ...args);
 
 const ZENN_CACHE_KEY      = 'zenn_muted_usernames';
 const QIITA_CACHE_KEY     = 'qiita_muted_usernames';
