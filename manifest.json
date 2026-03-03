@@ -19,7 +19,8 @@
     {
       "matches": [
         "https://zenn.dev/*",
-        "https://qiita.com/*"
+        "https://qiita.com/*",
+        "https://bsky.app/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"

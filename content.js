@@ -23,7 +23,9 @@ const log  = (...args) => debugLog('log', ...args);
 const warn = (...args) => debugLog('warn', ...args);
 
 // ---- サイト判定 ----
-const SITE = location.hostname.includes('qiita.com') ? 'qiita' : 'zenn';
+const SITE = location.hostname === 'qiita.com' ? 'qiita'
+           : location.hostname === 'bsky.app'   ? 'bluesky'
+           : 'zenn';
 log(`サイト: ${SITE}`);
 
 // ---- 著者username取得 ----
@@ -216,6 +218,113 @@ async function checkCurrentPage() {
   checking = false;
 }
 
-// setIntervalでURL変化を監視（SPA対応）
-setInterval(() => checkCurrentPage(), 300);
-checkCurrentPage();
+// ---- Bluesky timeline処理 ----
+const BLUESKY_URL_PATTERNS = [
+  { re: /https?:\/\/zenn\.dev\/([^\/]+)\/(articles|books)\//, site: 'zenn' },
+  { re: /https?:\/\/qiita\.com\/([^\/]+)\/items\//, site: 'qiita' },
+];
+
+const cachedMutesForSite = {};
+
+async function getMutedUsernamesForSite(site) {
+  if (cachedMutesForSite[site] != null) return cachedMutesForSite[site];
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_MUTED_USERNAMES', site });
+    cachedMutesForSite[site] = response?.usernames || [];
+    log(`Bluesky: ${site}ミュートリスト取得: ${cachedMutesForSite[site].length}件`);
+  } catch (e) {
+    warn('sendMessage失敗:', e);
+    cachedMutesForSite[site] = [];
+  }
+  return cachedMutesForSite[site];
+}
+
+function findBlueskyPostElement(el) {
+  let node = el;
+  while (node && node !== document.body) {
+    if (node.dataset?.testid?.startsWith('feedItem-')) return node;
+    if (node.tagName === 'ARTICLE') return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+const processedBlueskyPosts = new WeakSet();
+
+async function processBlueskyPost(postEl) {
+  if (processedBlueskyPosts.has(postEl)) return;
+  processedBlueskyPosts.add(postEl);
+
+  const links = postEl.querySelectorAll('a[href]');
+  for (const link of links) {
+    const href = link.href;
+    for (const { re, site } of BLUESKY_URL_PATTERNS) {
+      const m = href.match(re);
+      if (!m) continue;
+      const username = m[1];
+      const muted = await getMutedUsernamesForSite(site);
+      if (muted.includes(username)) {
+        log(`Bluesky: @${username} (${site}) はミュート対象`);
+        showBlueskyWarning(postEl, username, site);
+        return;
+      }
+    }
+  }
+}
+
+function showBlueskyWarning(postEl, username, site) {
+  if (postEl.querySelector('.zmw-inline-warning')) return;
+  const banner = document.createElement('div');
+  banner.className = 'zmw-inline-warning';
+  banner.style.cssText = `
+    background: #b91c1c; color: #fff; padding: 8px 12px;
+    font-size: 13px; font-family: sans-serif; border-radius: 4px;
+    margin: 4px 8px; display: flex; align-items: center; justify-content: space-between;
+  `;
+  banner.addEventListener('click', e => e.stopPropagation());
+
+  const msg = document.createElement('span');
+  msg.textContent = `⚠️ このポストにリンクされている著者 @${username} (${site}) はミュートしているユーザーです。`;
+
+  const btn = document.createElement('button');
+  btn.textContent = '×';
+  btn.style.cssText = `background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;padding:0 0 0 8px;`;
+  btn.addEventListener('click', e => { e.stopPropagation(); banner.remove(); });
+
+  banner.appendChild(msg);
+  banner.appendChild(btn);
+  postEl.prepend(banner);
+}
+
+function scanBlueskyPosts() {
+  document.querySelectorAll('a[href]').forEach(link => {
+    const href = link.href;
+    for (const { re } of BLUESKY_URL_PATTERNS) {
+      if (re.test(href)) {
+        const postEl = findBlueskyPostElement(link);
+        if (postEl) processBlueskyPost(postEl);
+        break;
+      }
+    }
+  });
+}
+
+function initBluesky() {
+  log('Bluesky timeline監視開始');
+  scanBlueskyPosts();
+  let scanTimer = null;
+  const observer = new MutationObserver(() => {
+    if (scanTimer) clearTimeout(scanTimer);
+    scanTimer = setTimeout(scanBlueskyPosts, 300);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+if (SITE === 'bluesky') {
+  initBluesky();
+} else {
+  // setIntervalでURL変化を監視（SPA対応）
+  setInterval(() => checkCurrentPage(), 300);
+  checkCurrentPage();
+}
+
