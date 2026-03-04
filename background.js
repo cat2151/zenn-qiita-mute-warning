@@ -168,4 +168,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     log(`Zennタブ更新: ${tab.url}`);
     refreshIfNeeded('zenn');
   }
+  if (tab.url?.startsWith('https://bsky.app/')) {
+    log(`Blueskyタブ更新: ${tab.url}`);
+    refreshIfNeeded('zenn');
+  }
 });
