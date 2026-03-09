@@ -289,8 +289,8 @@ function showBlueskyWarning(postEl, username, site) {
   banner.className = 'zmw-inline-warning';
   banner.style.cssText = `
     background: #b91c1c; color: #fff; padding: 8px 12px;
-    font-size: 13px; font-family: sans-serif; border-radius: 4px 4px 0 0;
-    margin: 4px 8px 0 8px; display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; font-family: sans-serif;
+    display: flex; align-items: center; justify-content: space-between;
   `;
   banner.addEventListener('click', e => e.stopPropagation());
 
@@ -306,7 +306,25 @@ function showBlueskyWarning(postEl, username, site) {
 
   banner.appendChild(msg);
   banner.appendChild(btn);
+
+  const postContentEl = postEl.firstElementChild;
+  let originalBorderTopWidth = null;
+  if (postContentEl) {
+    const computed = getComputedStyle(postContentEl);
+    const borderTopWidth = computed.borderTopWidth;
+    const borderTopStyle = computed.borderTopStyle;
+    if (borderTopWidth !== '0px' && borderTopStyle !== 'none' && borderTopStyle !== 'hidden') {
+      originalBorderTopWidth = borderTopWidth;
+      banner.style.borderTop = `${borderTopWidth} ${borderTopStyle} ${computed.borderTopColor}`;
+    }
+  }
+
   postEl.prepend(banner);
+
+  if (postContentEl && originalBorderTopWidth !== null) {
+    postContentEl.style.borderTopWidth = '0px';
+    btn.addEventListener('click', () => { postContentEl.style.borderTopWidth = originalBorderTopWidth; });
+  }
 }
 
 function processBlueskyLink(link) {
