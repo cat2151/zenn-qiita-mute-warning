@@ -306,15 +306,24 @@ function showBlueskyWarning(postEl, username, site) {
 
   banner.appendChild(msg);
   banner.appendChild(btn);
-  postEl.prepend(banner);
 
-  const postContentEl = banner.nextElementSibling;
+  const postContentEl = postEl.firstElementChild;
+  let originalBorderTopWidth = null;
   if (postContentEl) {
     const computed = getComputedStyle(postContentEl);
-    if (computed.borderTopWidth !== '0px') {
-      banner.style.borderTop = `${computed.borderTopWidth} solid ${computed.borderTopColor}`;
-      postContentEl.style.borderTopWidth = '0px';
+    const borderTopWidth = computed.borderTopWidth;
+    const borderTopStyle = computed.borderTopStyle;
+    if (borderTopWidth !== '0px' && borderTopStyle !== 'none' && borderTopStyle !== 'hidden') {
+      originalBorderTopWidth = borderTopWidth;
+      banner.style.borderTop = `${borderTopWidth} ${borderTopStyle} ${computed.borderTopColor}`;
     }
+  }
+
+  postEl.prepend(banner);
+
+  if (postContentEl && originalBorderTopWidth !== null) {
+    postContentEl.style.borderTopWidth = '0px';
+    btn.addEventListener('click', () => { postContentEl.style.borderTopWidth = originalBorderTopWidth; });
   }
 }
 
