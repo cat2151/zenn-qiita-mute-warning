@@ -1,6 +1,36 @@
 const DEBUG_FLAG_KEY = 'zmw_debug_mode_enabled';
 const LOG_PREFIX = '[ZMW:content]';
+const ZENN_CACHE_KEY = 'zenn_muted_usernames';
+const ZENN_LOCAL_MUTES_KEY = 'zenn_local_muted_usernames';
+const ZENN_LOCAL_MUTE_BUTTON_ID = 'zmw-local-mute-button';
 let debugEnabled = false;
+let cachedMutedUsernames = null;
+const cachedMutesForSite = {};
+const ZENN_RESERVED_TOP_LEVEL_PATHS = new Set([
+  'about',
+  'api',
+  'articles',
+  'books',
+  'dashboard',
+  'editor',
+  'explore',
+  'faq',
+  'help',
+  'login',
+  'me',
+  'new',
+  'notifications',
+  'privacy',
+  'publications',
+  'scraps',
+  'search',
+  'settings',
+  'signin',
+  'signup',
+  'tech-or-idea',
+  'topics',
+  'users',
+]);
 
 const debugReady = chrome.storage.local.get([DEBUG_FLAG_KEY]).then(result => {
   debugEnabled = Boolean(result[DEBUG_FLAG_KEY]);
@@ -9,6 +39,10 @@ const debugReady = chrome.storage.local.get([DEBUG_FLAG_KEY]).then(result => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && DEBUG_FLAG_KEY in changes) {
     debugEnabled = Boolean(changes[DEBUG_FLAG_KEY].newValue);
+  }
+  if (area === 'local' && (ZENN_CACHE_KEY in changes || ZENN_LOCAL_MUTES_KEY in changes)) {
+    cachedMutedUsernames = null;
+    cachedMutesForSite.zenn = null;
   }
 });
 
@@ -27,6 +61,17 @@ const SITE = location.hostname === 'qiita.com' ? 'qiita'
            : location.hostname === 'bsky.app'   ? 'bluesky'
            : 'zenn';
 log(`サイト: ${SITE}`);
+
+function getZennProfileUsername() {
+  if (SITE !== 'zenn') return null;
+  const match = location.pathname.match(/^\/([^\/]+)\/?$/);
+  if (!match) return null;
+
+  const username = match[1];
+  if (!/^[A-Za-z0-9_-]+$/.test(username)) return null;
+  if (ZENN_RESERVED_TOP_LEVEL_PATHS.has(username.toLowerCase())) return null;
+  return username;
+}
 
 // ---- 著者username取得 ----
 function getAuthorUsername() {
@@ -48,6 +93,8 @@ function getAuthorUsername() {
     // フォールバック: URL
     const match = location.pathname.match(/^\/([^\/]+)\/(articles|books)\//);
     if (match) { log(`Zenn URLから著者: "${match[1]}"`); return match[1]; }
+    const profileUsername = getZennProfileUsername();
+    if (profileUsername) { log(`ZennプロフィールURLからユーザー: "${profileUsername}"`); return profileUsername; }
     return null;
   }
 
@@ -66,13 +113,24 @@ function isArticlePage() {
   return false;
 }
 
+function getWarningTargetKind() {
+  if (isArticlePage()) return 'article';
+  if (getZennProfileUsername()) return 'zenn_profile';
+  return null;
+}
+
 // ---- 警告バナー ----
 function removeWarning() {
   const el = document.getElementById('zmw-warning-banner');
   if (el) { el.remove(); document.body.style.marginTop = ''; }
 }
 
-function showWarning(username) {
+function removeLocalMuteButton() {
+  const el = document.getElementById(ZENN_LOCAL_MUTE_BUTTON_ID);
+  if (el) el.remove();
+}
+
+function showWarning(username, subject = '著者') {
   if (document.getElementById('zmw-warning-banner')) return;
 
   const banner = document.createElement('div');
@@ -86,7 +144,7 @@ function showWarning(username) {
   `;
 
   const message = document.createElement('span');
-  message.textContent = `⚠️ このページの著者 @${username} はミュートしているユーザーです。`;
+  message.textContent = `⚠️ このページの${subject} @${username} はミュートしているユーザーです。`;
 
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex;gap:10px;align-items:center;';
@@ -113,6 +171,53 @@ function showWarning(username) {
   banner.appendChild(actions);
   document.body.prepend(banner);
   document.body.style.marginTop = `${banner.offsetHeight}px`;
+}
+
+function showLocalMuteButton(username, subject = '著者') {
+  if (SITE !== 'zenn') return;
+  if (document.getElementById(ZENN_LOCAL_MUTE_BUTTON_ID)) return;
+
+  const button = document.createElement('button');
+  button.id = ZENN_LOCAL_MUTE_BUTTON_ID;
+  button.type = 'button';
+  const defaultLabel = `@${username} をローカルミュート`;
+  button.textContent = defaultLabel;
+  button.style.cssText = `
+    position: fixed; right: 16px; bottom: 16px; z-index: 99998;
+    background: #111827; color: #fff; border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 13px;
+    font-family: sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  `;
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    button.textContent = '追加中...';
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'ADD_ZENN_LOCAL_MUTE',
+        username
+      });
+
+      if (!response?.ok) {
+        button.disabled = false;
+        button.textContent = '追加できませんでした';
+        setTimeout(() => { button.textContent = defaultLabel; }, 1600);
+        return;
+      }
+
+      cachedMutedUsernames = null;
+      cachedMutesForSite.zenn = null;
+      removeLocalMuteButton();
+      showWarning(username, subject);
+    } catch (e) {
+      warn('ローカルミュート追加失敗:', e);
+      button.disabled = false;
+      button.textContent = '追加できませんでした';
+      setTimeout(() => { button.textContent = defaultLabel; }, 1600);
+    }
+  });
+
+  document.body.appendChild(button);
 }
 
 // ---- Qiitaミュートリストをcontent scriptからfetchするFetch ----
@@ -150,9 +255,6 @@ async function fetchQiitaMutedUsernamesFromContent() {
   log(`Qiita ミュートリスト: ${usernames.length}件`);
   return usernames;
 }
-
-// ---- ミュートリストキャッシュ ----
-let cachedMutedUsernames = null;
 
 async function getMutedUsernames() {
   if (cachedMutedUsernames !== null) return cachedMutedUsernames;
@@ -194,9 +296,11 @@ async function checkCurrentPage() {
 
   log(`ページチェック: ${path}`);
   removeWarning();
+  removeLocalMuteButton();
 
-  if (!isArticlePage()) {
-    log('記事ページではないためスキップ');
+  const targetKind = getWarningTargetKind();
+  if (!targetKind) {
+    log('警告対象ページではないためスキップ');
     checking = false;
     return;
   }
@@ -204,7 +308,8 @@ async function checkCurrentPage() {
   await new Promise(r => setTimeout(r, 800));
 
   const username = getAuthorUsername();
-  log(`著者username="${username}"`);
+  const subject = targetKind === 'zenn_profile' ? 'ユーザー' : '著者';
+  log(`${subject}username="${username}"`);
   if (!username) { warn('username取得失敗'); checking = false; return; }
 
   const mutedUsernames = await getMutedUsernames();
@@ -212,7 +317,9 @@ async function checkCurrentPage() {
 
   if (mutedUsernames.includes(username)) {
     log('→ 警告バナーを表示');
-    showWarning(username);
+    showWarning(username, subject);
+  } else if (SITE === 'zenn') {
+    showLocalMuteButton(username, subject);
   }
 
   checking = false;
@@ -223,8 +330,6 @@ const BLUESKY_URL_PATTERNS = [
   { re: /https?:\/\/zenn\.dev\/([^\/]+)\/(articles|books)\//, site: 'zenn' },
   { re: /https?:\/\/qiita\.com\/([^\/]+)\/items\//, site: 'qiita' },
 ];
-
-const cachedMutesForSite = {};
 
 async function getMutedUsernamesForSite(site) {
   if (cachedMutesForSite[site] != null) return cachedMutesForSite[site];
@@ -368,4 +473,3 @@ if (SITE === 'bluesky') {
   setInterval(() => checkCurrentPage(), 300);
   checkCurrentPage();
 }
-

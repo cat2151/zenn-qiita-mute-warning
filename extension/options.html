@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Zenn/Qiita Mute Warning - Options</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; color: #222; max-width: 720px; }
+    h1 { font-size: 20px; margin: 0 0 20px; }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    section { border-top: 1px solid #ddd; padding: 18px 0; }
+    label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    form { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+    input[type="text"] { flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px; }
+    button { padding: 7px 12px; font-size: 13px; cursor: pointer; }
+    ul { list-style: none; padding: 0; margin: 12px 0 0; border: 1px solid #ddd; border-radius: 6px; }
+    li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-top: 1px solid #eee; }
+    li:first-child { border-top: none; }
+    code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .hint { color: #555; font-size: 12px; margin-top: 8px; line-height: 1.6; }
+    .status { min-height: 18px; color: #555; font-size: 13px; margin: 8px 0 0; }
+    .empty { color: #777; justify-content: flex-start; }
+  </style>
+</head>
+<body>
+  <h1>Zenn/Qiita Mute Warning - Options</h1>
+
+  <section>
+    <h2>Zenn local mute</h2>
+    <div class="hint">
+      Zenn公式のミュート上限を超えたユーザーを、拡張機能内だけで警告対象にします。
+      Zenn本体のミュート設定には登録されません。
+    </div>
+    <form id="zennLocalMuteForm">
+      <input type="text" id="zennLocalMuteInput" placeholder="username または https://zenn.dev/username" autocomplete="off">
+      <button type="submit">追加</button>
+    </form>
+    <div class="status" id="zennLocalMuteStatus"></div>
+    <ul id="zennLocalMuteList"></ul>
+  </section>
+
+  <section>
+    <h2>Debug Mode</h2>
+    <label>
+      <input type="checkbox" id="debugToggle">
+      Enable console logs for debugging
+    </label>
+    <div class="hint">デフォルトはOFFです。問題調査時のみONにしてください。</div>
+  </section>
+  <script src="options.js" defer></script>
+</body>
+</html>

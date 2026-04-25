@@ -25,9 +25,65 @@ const err  = (...args) => debugLog('error', ...args);
 
 const ZENN_CACHE_KEY      = 'zenn_muted_usernames';
 const QIITA_CACHE_KEY     = 'qiita_muted_usernames';
+const ZENN_LOCAL_MUTES_KEY = 'zenn_local_muted_usernames';
 const ZENN_TIMESTAMP_KEY  = 'zenn_muted_usernames_updated_at';
 const QIITA_TIMESTAMP_KEY = 'qiita_muted_usernames_updated_at';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function normalizeZennUsername(value) {
+  const text = String(value || '').trim();
+  const urlMatch = text.match(/^(?:https?:\/\/)?zenn\.dev\/([^/?#]+)/i);
+  const username = (urlMatch ? urlMatch[1] : text).replace(/^@+/, '').trim();
+  if (!username || /[\s/?#]/.test(username)) return '';
+  return username;
+}
+
+function uniqueUsernames(values) {
+  const seen = new Set();
+  const usernames = [];
+  for (const value of values || []) {
+    const username = normalizeZennUsername(value);
+    const key = username.toLowerCase();
+    if (!username || seen.has(key)) continue;
+    seen.add(key);
+    usernames.push(username);
+  }
+  return usernames;
+}
+
+function mergeUsernames(...lists) {
+  return uniqueUsernames(lists.flat());
+}
+
+async function getZennLocalMutedUsernames() {
+  const result = await chrome.storage.local.get([ZENN_LOCAL_MUTES_KEY]);
+  return uniqueUsernames(result[ZENN_LOCAL_MUTES_KEY] || []);
+}
+
+async function setZennLocalMutedUsernames(usernames) {
+  const normalized = uniqueUsernames(usernames);
+  await chrome.storage.local.set({ [ZENN_LOCAL_MUTES_KEY]: normalized });
+  return normalized;
+}
+
+async function addZennLocalMutedUsername(value) {
+  const username = normalizeZennUsername(value);
+  if (!username) return { ok: false, error: 'invalid_username', usernames: await getZennLocalMutedUsernames() };
+
+  const current = await getZennLocalMutedUsernames();
+  const next = mergeUsernames(current, [username]);
+  await chrome.storage.local.set({ [ZENN_LOCAL_MUTES_KEY]: next });
+  return { ok: true, username, added: next.length !== current.length, usernames: next };
+}
+
+async function removeZennLocalMutedUsername(value) {
+  const username = normalizeZennUsername(value);
+  const current = await getZennLocalMutedUsernames();
+  const removeKey = username.toLowerCase();
+  const next = current.filter(name => name.toLowerCase() !== removeKey);
+  await chrome.storage.local.set({ [ZENN_LOCAL_MUTES_KEY]: next });
+  return { ok: true, username, removed: next.length !== current.length, usernames: next };
+}
 
 // ---- Zenn ----
 async function fetchZennMutedUsernames() {
@@ -120,10 +176,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'GET_MUTED_USERNAMES') {
     const cacheKey = message.site === 'qiita' ? QIITA_CACHE_KEY : ZENN_CACHE_KEY;
-    chrome.storage.local.get([cacheKey]).then(result => {
-      const usernames = result[cacheKey] || [];
-      log(`GET_MUTED_USERNAMES(${message.site}) 応答: ${usernames.length}件`);
+    const keys = message.site === 'zenn' ? [cacheKey, ZENN_LOCAL_MUTES_KEY] : [cacheKey];
+    chrome.storage.local.get(keys).then(result => {
+      const remoteUsernames = result[cacheKey] || [];
+      const localUsernames = message.site === 'zenn' ? result[ZENN_LOCAL_MUTES_KEY] || [] : [];
+      const usernames = message.site === 'zenn'
+        ? mergeUsernames(remoteUsernames, localUsernames)
+        : remoteUsernames;
+      log(`GET_MUTED_USERNAMES(${message.site}) 応答: remote=${remoteUsernames.length}件 local=${localUsernames.length}件 total=${usernames.length}件`);
       sendResponse({ usernames });
+    });
+    return true;
+  }
+
+  if (message.type === 'GET_ZENN_LOCAL_MUTED_USERNAMES') {
+    getZennLocalMutedUsernames().then(usernames => {
+      log(`GET_ZENN_LOCAL_MUTED_USERNAMES 応答: ${usernames.length}件`);
+      sendResponse({ usernames });
+    });
+    return true;
+  }
+
+  if (message.type === 'ADD_ZENN_LOCAL_MUTE') {
+    addZennLocalMutedUsername(message.username).then(result => {
+      log(`ADD_ZENN_LOCAL_MUTE: username=${result.username || ''} ok=${result.ok} added=${Boolean(result.added)}`);
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  if (message.type === 'REMOVE_ZENN_LOCAL_MUTE') {
+    removeZennLocalMutedUsername(message.username).then(result => {
+      log(`REMOVE_ZENN_LOCAL_MUTE: username=${result.username || ''} removed=${Boolean(result.removed)}`);
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  if (message.type === 'SET_ZENN_LOCAL_MUTED_USERNAMES') {
+    setZennLocalMutedUsernames(message.usernames || []).then(usernames => {
+      log(`SET_ZENN_LOCAL_MUTED_USERNAMES: ${usernames.length}件保存`);
+      sendResponse({ ok: true, usernames });
     });
     return true;
   }
