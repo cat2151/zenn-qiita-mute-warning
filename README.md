@@ -1,35 +1,42 @@
 # Zenn/Qiita Mute Warning
 
-This is a Chrome extension that displays a warning banner at the top of the screen when you open an article by a user you've muted on Zenn or Qiita.
+This is a Chrome extension that displays a warning banner at the top of the screen when opening an article by a muted user on Zenn or Qiita.
 
-While Zenn hides muted users from your timeline, articles from those users will still be displayed if you access them directly via their URL. Qiita behaves similarly, allowing you to open articles by muted users. This extension helps you become aware of such instances.
+Zenn hides muted users from your timeline (TL), but if you access an article directly via its URL, it will still be displayed. Qiita also allows articles from muted users to be opened in the same way, so this extension helps you notice them.
 
-## How It Works
+## Operation Image
 
 When you open an article by a muted user, a warning banner like the following will be displayed:
 
-- **"← Back"**: Returns to the previous page
-- **"Read Anyway"**: Closes the banner and continues reading the article
+- **"← Go back"**: Returns to the previous page
+- **"Read anyway"**: Closes the banner and continues reading the article
 
 ## Supported Pages
 
 - Standard article pages (`/username/articles/slug`)
-- Articles via Publication (organization) pages (URL uses Org slug, but accurately detects the actual author)
+- Publication (organization) articles (URL uses Org slug, but correctly detects the actual author)
 - Book pages (`/username/books/slug`)
+- Zenn author pages (`/username`)
 - Qiita article pages (`/username/items/slug`)
-- SPA transitions (detects navigation from in-page links as well)
+- SPA transitions (detects transitions from in-page links)
 
 ## Debug Mode
 
-There is a "Debug Mode" toggle on the extension's options page. Turning it ON enables debug logs to the console. It is OFF by default, so please only enable it when investigating issues.
+There is a "Debug Mode" toggle on the extension's options page. Turning it ON enables debug logs to the console. It is OFF by default, so please only turn it ON when investigating issues.
+
+## Zenn local mute
+
+Users exceeding Zenn's official mute limit can be added as local mutes from the extension's options page. On Zenn article pages, a "Local Mute" button will also be displayed for unmuted authors.
+
+Local mutes are not registered in Zenn's main mute settings. This is local storage for this extension to treat them as warning targets.
 
 ## Mechanism
 
-Zenn retrieves the mute list using the official API `GET /api/me/mutes` and caches it in `chrome.storage.local` for 24 hours. Qiita calls GraphQL `GetMutingUsers` from the content script (utilizing a CSRF token) and similarly keeps the data only locally. No data is ever sent to external servers.
+Zenn retrieves the mute list using the official API `GET /api/me/mutes` and caches it in `chrome.storage.local` for 24 hours. Zenn local mutes are also stored in `chrome.storage.local`, and for judgment, the official mute list and local mutes are combined. Qiita calls GraphQL `GetMutingUsers` from the content script (utilizing CSRF token) and similarly keeps it only locally. No data is sent to external servers whatsoever.
 
 ## Installation (Developer Mode)
 
-Since it's not yet published on the Chrome Web Store, manual installation is required.
+As it is not yet published on the Chrome Web Store, manual installation is required.
 
 **1. Clone the repository**
 
@@ -37,7 +44,7 @@ Since it's not yet published on the Chrome Web Store, manual installation is req
 git clone https://github.com/YOUR_USERNAME/zenn-mute-warning.git
 ```
 
-**2. Open Chrome's Extensions page**
+**2. Open Chrome's extensions page**
 
 Enter the following in the address bar:
 
@@ -47,35 +54,39 @@ chrome://extensions
 
 **3. Enable Developer Mode**
 
-Turn ON the "Developer Mode" toggle in the top right.
+Toggle "Developer mode" ON in the top right.
 
 **4. Load the extension**
 
-Click "Load unpacked" and select the cloned `zenn-mute-warning` folder.
+Click "Load unpacked" and select the `extension` folder directly under the cloned repository.
 
 **5. Log in to Zenn**
 
-Please use it while logged in to Zenn. The banner will not be displayed if you are not logged in, as the mute list cannot be retrieved.
+Please use this while logged in to Zenn. If not logged in, the mute list cannot be retrieved, so the banner will not be displayed.
 
 ## Updating the Mute List
 
-The mute list is automatically retrieved on the first access and then cached for 24 hours. If you wish to update it immediately, refresh the extension once from `chrome://extensions`.
+The mute list is automatically fetched on the first access and then cached for 24 hours. If you want to update it immediately, refresh the extension once from `chrome://extensions`.
 
 ## File Structure
 
 ```
 zenn-mute-warning/
-├── manifest.json   # Extension settings
-├── background.js   # Mute list retrieval and caching
-├── content.js      # Author detection and warning banner display
+├── extension/
+│   ├── manifest.json   # Extension settings
+│   ├── background.js   # Mute list acquisition and caching
+│   ├── content.js      # Author detection and warning banner display
+│   ├── options.html    # Options page
+│   └── options.js      # Options page processing
+├── _config.yml     # Jekyll settings for GitHub Pages
 └── README.md
 ```
 
-## Important Notes
+## Notes
 
-- The extension may stop working due to changes in Zenn's API specifications.
+- It may stop working due to changes in Zenn's API specifications.
 - As it is not published on the Chrome Web Store, the extension may be disabled during Chrome updates.
-- This extension is a Proof-of-Concept (PoC). No guarantee of operation is provided.
+- This extension is a PoC (Proof of Concept). No guarantee of operation is provided.
 
 ## License
 
